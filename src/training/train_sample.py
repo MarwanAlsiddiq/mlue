@@ -12,155 +12,192 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-class TradingDataset(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
+# Initialize config
+config = TradingConfig()
+
+class TradingConfig:
+    def __init__(self):
+        self.input_dim = 10  # open, high, low, close, volume, marketcap, rsi, macd, macd_signal, macd_hist
+        self.hidden_dim = 512
+        self.num_layers = 6
+        self.num_heads = 8
+        self.dropout = 0.3
+        self.learning_rate = 0.0001
+        self.weight_decay = 0.001
+        self.class_weights = torch.tensor([1.0, 2.0])  # Give more weight to positive class
+        self.batch_size = 32
+        self.window_size = 16
+        self.epochs = 100
+        self.patience = 15
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class CryptoDataset(Dataset):
+    def __init__(self, sequences, labels):
+        self.sequences = sequences
         self.labels = labels
-    
+        assert len(self.sequences) == len(self.labels), "Sequences and labels must have same length"
+        self.labels = np.array(self.labels)  # Convert to numpy array for consistent shape
+
     def __len__(self):
-        return len(self.data)
-    
+        return len(self.sequences)
+
     def __getitem__(self, idx):
-        sequence = self.data[idx]
-        label = self.labels[idx]
-        
-        # Convert to tensor if not already
-        if not isinstance(sequence, torch.Tensor):
-            sequence = torch.tensor(sequence, dtype=torch.float32)
-        
-        return sequence, torch.tensor(label, dtype=torch.float32)
+        sequence = torch.FloatTensor(self.sequences[idx])
+        label = torch.FloatTensor([self.labels[idx]])  # Ensure label is a tensor of shape (1,)
+        return sequence, label
 
 def prepare_combined_data(processor):
-    """Prepare combined training and testing datasets for Bitcoin and Gala"""
+    """Prepare combined training and testing datasets for both Bitcoin and Gala."""
     # Prepare Bitcoin data
-    btc_train_images, btc_train_labels, btc_test_images, btc_test_labels = processor.prepare_dataset(
-        crypto_name='bitcoin',
-        window_size=8,
-        test_size=0.2
-    )
+    btc_train_data, btc_train_labels, btc_test_data, btc_test_labels = processor.prepare_dataset('bitcoin')
     
     # Prepare Gala data
-    gala_train_images, gala_train_labels, gala_test_images, gala_test_labels = processor.prepare_dataset(
-        crypto_name='gala',
-        window_size=8,
-        test_size=0.2
-    )
+    gala_train_data, gala_train_labels, gala_test_data, gala_test_labels = processor.prepare_dataset('gala')
     
-    # Convert numpy arrays to tensors
-    btc_train_tensors = torch.from_numpy(btc_train_images).float()
-    btc_train_labels = torch.from_numpy(btc_train_labels).float()
-    btc_test_tensors = torch.from_numpy(btc_test_images).float()
-    btc_test_labels = torch.from_numpy(btc_test_labels).float()
+    # Combine training data
+    train_data = np.concatenate([btc_train_data, gala_train_data], axis=0)
+    train_labels = np.concatenate([btc_train_labels, gala_train_labels], axis=0)
     
-    gala_train_tensors = torch.from_numpy(gala_train_images).float()
-    gala_train_labels = torch.from_numpy(gala_train_labels).float()
-    gala_test_tensors = torch.from_numpy(gala_test_images).float()
-    gala_test_labels = torch.from_numpy(gala_test_labels).float()
-    
-    # Combine datasets
-    train_tensors = torch.cat([btc_train_tensors, gala_train_tensors], dim=0)
-    train_labels = torch.cat([btc_train_labels, gala_train_labels], dim=0)
-    test_tensors = torch.cat([btc_test_tensors, gala_test_tensors], dim=0)
-    test_labels = torch.cat([btc_test_labels, gala_test_labels], dim=0)
+    # Combine test data
+    test_data = np.concatenate([btc_test_data, gala_test_data], axis=0)
+    test_labels = np.concatenate([btc_test_labels, gala_test_labels], axis=0)
     
     # Create datasets
-    train_dataset = TradingDataset(train_tensors, train_labels)
-    test_dataset = TradingDataset(test_tensors, test_labels)
+    train_dataset = CryptoDataset(train_data, train_labels)
+    test_dataset = CryptoDataset(test_data, test_labels)
     
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False)
     
     return train_loader, test_loader
 
-def train_model(train_loader, test_loader):
-    # Initialize model with configuration
-    config = TradingConfig(
-        input_dim=6,  # Open, High, Low, Close, Volume, Marketcap/Quote asset volume
-        hidden_dim=128,
-        num_layers=6,
-        num_heads=8,
-        dropout=0.1
-    )
+def train_model(train_loader, test_loader, config):
+    """Train the trading model."""
+    # Initialize model
     model = TradingTransformer(config)
+    model = model.to(config.device)
     
-    # Move model to GPU if available
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model.to(device)
+    # Calculate class weights
+    train_labels = []
+    for _, labels in train_loader:
+        train_labels.extend(labels.numpy())
+    train_labels = np.array(train_labels)
     
-    # Set up optimizer and loss function
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.BCEWithLogitsLoss()  # Binary Cross Entropy with logits
+    # Calculate class weights
+    pos_weight = len(train_labels) / (2 * np.sum(train_labels))
+    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(pos_weight).to(config.device))
+    
+    # Optimizer with learning rate scheduling
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=3)
+    
+    # Early stopping
+    best_val_loss = float('inf')
+    patience = config.patience
+    epochs_without_improvement = 0
     
     # Training loop
-    num_epochs = 50
-    best_val_loss = float('inf')
-    
-    for epoch in range(num_epochs):
-        # Training phase
+    for epoch in range(config.epochs):
         model.train()
-        train_loss = 0.0
+        train_loss = 0
+        train_correct = 0
+        train_total = 0
         
+        # Training
         for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device).float()
-            
-            # Zero the parameter gradients
-            optimizer.zero_grad()
+            inputs = inputs.to(config.device)
+            labels = labels.to(config.device)
             
             # Forward pass
             outputs = model(inputs)
-            
-            # Ensure labels have the same shape as outputs
-            labels = labels.unsqueeze(1)
-            
-            # Compute loss
+            # Ensure labels have shape (batch_size,)
+            labels = labels.squeeze(-1)
             loss = criterion(outputs, labels)
             
-            # Backward pass and optimize
+            # Backward pass and optimization
+            optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+            
+            # Calculate training accuracy
+            probs = torch.sigmoid(outputs)
+            preds = (probs > 0.5).float()
+            train_correct += (preds == labels).sum().item()
+            train_total += labels.size(0)
+            
             train_loss += loss.item()
-        
-        train_loss /= len(train_loader)
         
         # Validation
         model.eval()
         val_loss = 0
+        val_correct = 0
+        val_total = 0
+        all_probs = []
+        all_labels = []
+        
         with torch.no_grad():
             for inputs, labels in test_loader:
+                inputs = inputs.to(config.device)
+                labels = labels.to(config.device)
+                
                 outputs = model(inputs)
-                loss = criterion(outputs, labels.unsqueeze(1))
+                # Ensure labels have shape (batch_size,)
+                labels = labels.squeeze(-1)
+                loss = criterion(outputs, labels)
                 val_loss += loss.item()
-        val_loss /= len(test_loader)
+                
+                # Calculate validation accuracy
+                probs = torch.sigmoid(outputs)
+                preds = (probs > 0.5).float()
+                val_correct += (preds == labels).sum().item()
+                val_total += labels.size(0)
+                
+                # Store predictions and labels for metrics
+                all_probs.extend(probs.cpu().numpy())
+                all_labels.extend(labels.cpu().numpy())
         
-        print(f'Epoch [{epoch+1}/50], Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}')
+        # Calculate metrics
+        train_acc = train_correct / train_total
+        val_acc = val_correct / val_total
         
-        # Save model if validation loss improves
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
+        # Convert to numpy arrays for metrics
+        all_preds = np.array(all_probs) > 0.5
+        all_preds = np.array(all_preds)
+        all_labels = np.array(all_labels)
+        
+        # Calculate additional metrics
+        precision = precision_score(all_labels, all_preds, zero_division=0)
+        recall = recall_score(all_labels, all_preds, zero_division=0)
+        f1 = f1_score(all_labels, all_preds, zero_division=0)
+        
+        # Print metrics
+        print(f'Epoch [{epoch+1}/{config.epochs}], Train Loss: {train_loss/len(train_loader):.4f}, Val Loss: {val_loss/len(test_loader):.4f}',
+              f' Acc: {val_acc:.4f}, Prec: {precision:.4f}, Rec: {recall:.4f}, F1: {f1:.4f}')
+        
+        # Save best model
+        val_loss_epoch = val_loss / len(test_loader)
+        if val_loss_epoch < best_val_loss:
+            best_val_loss = val_loss_epoch
             torch.save(model.state_dict(), 'best_model.pth')
             print(f'Best model saved with validation loss: {best_val_loss:.4f}')
+            patience = 0
+        else:
+            patience += 1
+            if patience >= config.patience:
+                print(f'Early stopping after {config.patience} epochs without improvement')
+                break
     
     # Load the best model
     model.load_state_dict(torch.load('best_model.pth'))
     
-    # Evaluate on both Bitcoin and Gala separately
-    evaluate_model_performance(model, test_loader, 'bitcoin', device)
-    evaluate_model_performance(model, test_loader, 'gala', device)
-    
     return model
 
 def evaluate_model_performance(model, test_loader, crypto_name, device):
-    """
-    Evaluate model performance on test data and generate comprehensive metrics.
-    
-    Args:
-        model: Trained model
-        test_loader: DataLoader for test data
-        crypto_name: Name of the cryptocurrency (for reporting)
-        device: Device to run the evaluation on
-    """
+    """Evaluate model performance on a specific cryptocurrency."""
     model.eval()
+    
     all_preds = []
     all_labels = []
     all_probs = []
@@ -169,27 +206,30 @@ def evaluate_model_performance(model, test_loader, crypto_name, device):
         for inputs, labels in test_loader:
             inputs, labels = inputs.to(device), labels.to(device)
             outputs = model(inputs)
-            probs = torch.sigmoid(outputs)
-            preds = (probs > 0.5).float()
             
+            # Convert logits to probabilities
+            probs = torch.sigmoid(outputs)
+            all_probs.extend(probs.cpu().numpy())
+            
+            # Convert probabilities to binary predictions
+            preds = (probs > 0.5).float()
             all_preds.extend(preds.cpu().numpy())
             all_labels.extend(labels.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
     
-    # Convert to numpy arrays
+    # Convert lists to numpy arrays
     all_preds = np.array(all_preds)
     all_labels = np.array(all_labels)
     all_probs = np.array(all_probs)
     
-    # Calculate metrics
-    accuracy = accuracy_score(all_labels, all_preds)
-    precision = precision_score(all_labels, all_preds)
-    recall = recall_score(all_labels, all_preds)
-    f1 = f1_score(all_labels, all_preds)
-    auc = roc_auc_score(all_labels, all_probs)
+    # Convert predictions to binary
+    pred_labels = (all_preds > 0.5).astype(int)
     
-    # Create confusion matrix
-    cm = confusion_matrix(all_labels, all_preds)
+    # Calculate metrics
+    accuracy = accuracy_score(all_labels, pred_labels)
+    precision = precision_score(all_labels, pred_labels, average='binary', zero_division=0)
+    recall = recall_score(all_labels, pred_labels, average='binary', zero_division=0)
+    f1 = f1_score(all_labels, pred_labels, average='binary', zero_division=0)
+    auc = roc_auc_score(all_labels, all_probs)
     
     # Print metrics
     print(f"\n{crypto_name} Performance Metrics:")
@@ -199,11 +239,12 @@ def evaluate_model_performance(model, test_loader, crypto_name, device):
     print(f"- F1 Score: {f1:.4f}")
     print(f"- AUC: {auc:.4f}")
     
-    # Print confusion matrix
+    # Calculate and print confusion matrix
+    cm = confusion_matrix(all_labels, pred_labels)
     print("\nConfusion Matrix:")
-    print("Predicted\tActual")
-    print(f"{cm[0][0]}\tTP\t{cm[0][1]}\tFP")
-    print(f"{cm[1][0]}\tFN\t{cm[1][1]}\tTN")
+    print("\tPredicted\tActual")
+    print(f"TP\t{cm[0,0]}\tFP\t{cm[0,1]}")
+    print(f"FN\t{cm[1,0]}\tTN\t{cm[1,1]}")
     
     # Plot confusion matrix
     plt.figure(figsize=(8, 6))
@@ -261,87 +302,31 @@ def calculate_profits(predictions, actual_prices):
     return sum(profits) / len(profits) if profits else 0.0
 
 def main():
-    # Set device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f'Using device: {device}')
+    """Main function to run the training."""
+    # Initialize configuration
+    config = TradingConfig()
     
-    # Create data processor with data directory
-    processor = DataProcessor(data_dir='data/processed')
+    # Initialize data processor with new window size
+    processor = DataProcessor(window_size=config.window_size)
     
-    # Prepare combined data
+    # Prepare data loaders
     train_loader, test_loader = prepare_combined_data(processor)
     
     # Train model
-    trained_model = train_model(train_loader, test_loader)
+    trained_model = train_model(train_loader, test_loader, config)
     
-    # Save model
-    torch.save(trained_model.state_dict(), 'trained_model.pth')
-    print('Model saved!')
-    num_epochs = 50
-    best_val_acc = 0.0
+    # Load the best model
+    trained_model.load_state_dict(torch.load('best_model.pth'))
+    trained_model.eval()
     
-    for epoch in range(num_epochs):
-        # Training phase
-        model.train()
-        train_loss = 0.0
-        train_correct = 0
-        train_total = 0
-        
-        for inputs, labels in train_loader:
-            inputs, labels = inputs.to(device), labels.to(device)
-            
-            # Forward pass
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            
-            # Backward pass and optimize
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            # Track statistics
-            train_loss += loss.item()
-            _, predicted = outputs.max(1)
-            train_total += labels.size(0)
-            train_correct += predicted.eq(labels).sum().item()
-        
-        # Validation phase
-        model.eval()
-        val_loss = 0.0
-        val_correct = 0
-        val_total = 0
-        
-        with torch.no_grad():
-            for inputs, labels in test_loader:
-                inputs, labels = inputs.to(device), labels.to(device)
-                
-                outputs = model(inputs)
-                loss = criterion(outputs, labels)
-                
-                val_loss += loss.item()
-                _, predicted = outputs.max(1)
-                val_total += labels.size(0)
-                val_correct += predicted.eq(labels).sum().item()
-        
-        # Calculate accuracy
-        train_acc = 100. * train_correct / train_total
-        val_acc = 100. * val_correct / val_total
-        
-        print(f'Epoch [{epoch+1}/{num_epochs}]')
-        print(f'Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.2f}%')
-        print(f'Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.2f}%')
-        
-        # Save best model
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(model.state_dict(), 'best_model.pth')
-            print('Best model saved!')
+    # Evaluate model on both Bitcoin and Gala
+    print("\nBitcoin Performance Metrics:")
+    evaluate_model_performance(trained_model, test_loader, 'bitcoin', config.device)
     
-    print('Training complete!')
+    print("\nGala Performance Metrics:")
+    evaluate_model_performance(trained_model, test_loader, 'gala', config.device)
     
-    # Evaluate on both Bitcoin and Gala separately
-    evaluate_on_crypto(model, 'bitcoin', test_loader)
-    evaluate_on_crypto(model, 'gala', test_loader)
+    print("\nTraining complete!")
 
 if __name__ == "__main__":
     main()

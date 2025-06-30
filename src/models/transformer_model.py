@@ -5,29 +5,33 @@ from typing import Optional, Tuple
 import math
 
 class TradingConfig(PretrainedConfig):
-    def __init__(
-        self,
-        input_dim: int = 11,  # Number of features (Open, High, Low, Close, Volume, Marketcap/Quote volume, RSI, MACD, MACD_Signal, MACD_Hist, EMA)
-        hidden_dim: int = 128,
-        num_layers: int = 6,
-        num_heads: int = 8,
-        dropout: float = 0.1,
-        **kwargs
-    ):
-        super().__init__(**kwargs)
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
-        self.num_heads = num_heads
-        self.dropout = dropout
+    def __init__(self):
+        self.input_dim = 10  # open, high, low, close, volume, marketcap, rsi, macd, macd_signal, macd_hist
+        self.hidden_dim = 512
+        self.num_layers = 6
+        self.num_heads = 8
+        self.dropout = 0.3
+        self.learning_rate = 0.0001
+        self.weight_decay = 0.001
+        self.class_weights = torch.tensor([1.0, 2.0])  # Give more weight to positive class
+        self.batch_size = 32
+        self.window_size = 16
+        self.epochs = 100
+        self.patience = 15
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TradingTransformer(nn.Module):
     def __init__(self, config: TradingConfig):
         super().__init__()
         self.config = config
         
-        # Input embedding
-        self.embedding = nn.Linear(11, config.hidden_dim)  # Explicitly set input_dim to 11
+        # Feature embedding
+        self.embedding = nn.Sequential(
+            nn.Linear(config.input_dim, config.hidden_dim),
+            nn.LayerNorm(config.hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(config.dropout)
+        )
         
         # Positional encoding
         self.positional_encoding = PositionalEncoding(config.hidden_dim, config.dropout)
@@ -36,20 +40,23 @@ class TradingTransformer(nn.Module):
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=config.hidden_dim,
             nhead=config.num_heads,
+            dim_feedforward=config.hidden_dim * 4,
             dropout=config.dropout,
-            batch_first=True
+            activation='gelu'
         )
-        self.transformer = nn.TransformerEncoder(
-            encoder_layer,
-            num_layers=config.num_layers
-        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=config.num_layers)
         
-        # Output layer
+        # Classification head with batch normalization
         self.classifier = nn.Sequential(
             nn.Linear(config.hidden_dim, config.hidden_dim // 2),
-            nn.ReLU(),
+            nn.BatchNorm1d(config.hidden_dim // 2),
+            nn.GELU(),
             nn.Dropout(config.dropout),
-            nn.Linear(config.hidden_dim // 2, 1)
+            nn.Linear(config.hidden_dim // 2, config.hidden_dim // 4),
+            nn.BatchNorm1d(config.hidden_dim // 4),
+            nn.GELU(),
+            nn.Dropout(config.dropout),
+            nn.Linear(config.hidden_dim // 4, 1)
         )
         
         # Initialize weights
@@ -63,13 +70,10 @@ class TradingTransformer(nn.Module):
     
     def forward(self, x):
         """
-        Forward pass of the model.
+        Forward pass of the Transformer model.
         
         Args:
             x: Input tensor of shape (batch_size, seq_len, input_dim)
-            
-        Returns:
-            Output tensor of shape (batch_size, 1)
         """
         # Embed input features
         x = self.embedding(x)
@@ -77,17 +81,17 @@ class TradingTransformer(nn.Module):
         # Add positional encoding
         x = self.positional_encoding(x)
         
-        # Pass through transformer
+        # Pass through transformer encoder
         x = self.transformer(x)
         
-        # Take the mean across sequence dimension
+        # Take mean across sequence length dimension
         x = x.mean(dim=1)
         
-        # Final classification
+        # Pass through classifier
         x = self.classifier(x)
         
-        # Ensure output shape is (batch_size, 1)
-        return x.view(-1, 1)
+        # Return logits with shape (batch_size, 1)
+        return x.squeeze(-1)
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):

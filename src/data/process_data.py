@@ -1,13 +1,15 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 import os
 
 class DataProcessor:
-    def __init__(self, data_dir):
+    def __init__(self, window_size=16, data_dir='data/processed'):
+        """Initialize the data processor."""
+        self.window_size = window_size
         self.data_dir = data_dir
         self.scaler = MinMaxScaler()
         
@@ -22,87 +24,100 @@ class DataProcessor:
         return features
         
     def load_crypto_data(self, crypto_name):
-        """Load cryptocurrency data from processed folder and calculate technical indicators"""
-        # Try both naming conventions
-        usdt_file = os.path.join(self.data_dir, f'{crypto_name}_usdt_data_processed.csv')
-        regular_file = os.path.join(self.data_dir, f'{crypto_name}_processed.csv')
-        
-        # Load the processed CSV
-        if os.path.exists(usdt_file):
-            df = pd.read_csv(usdt_file)
-        elif os.path.exists(regular_file):
-            df = pd.read_csv(regular_file)
+        """Load and process cryptocurrency data."""
+        if crypto_name == 'bitcoin':
+            df = pd.read_csv('data/raw/btcusdt_data.csv')
+            df['marketcap'] = df['quote_volume']  # For Bitcoin, use quote volume as marketcap
+        elif crypto_name == 'gala':
+            df = pd.read_csv('data/raw/galausdt_data.csv')
+            df['marketcap'] = df['quote_volume']  # For Gala, use quote volume as marketcap
         else:
-            raise FileNotFoundError(f"Could not find data file for {crypto_name} in {self.data_dir}")
-        
-        # Calculate technical indicators using pure pandas
-        # Calculate RSI (14 periods)
-        delta = df['Close'].diff()
+            raise ValueError(f"Unsupported cryptocurrency: {crypto_name}")
+
+        # Calculate technical indicators
+        # RSI (14 periods)
+        delta = df['close'].diff()
         gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
         loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
         rs = gain / loss
-        df['RSI'] = 100 - (100 / (1 + rs))
-        
-        # Calculate MACD
-        df['EMA_12'] = df['Close'].ewm(span=12, adjust=False).mean()
-        df['EMA_26'] = df['Close'].ewm(span=26, adjust=False).mean()
-        df['MACD'] = df['EMA_12'] - df['EMA_26']
-        df['MACD_Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
-        df['MACD_Hist'] = df['MACD'] - df['MACD_Signal']
-        
-        # Calculate EMA (20 periods)
-        df['EMA'] = df['Close'].ewm(span=20, adjust=False).mean()
-        
-        # Replace NaN values with 0
-        df['RSI'] = df['RSI'].fillna(0)
-        df['MACD'] = df['MACD'].fillna(0)
-        df['MACD_Signal'] = df['MACD_Signal'].fillna(0)
-        df['MACD_Hist'] = df['MACD_Hist'].fillna(0)
-        df['EMA'] = df['EMA'].fillna(0)
-        
-        # Drop NaN values resulting from indicator calculations
+        df['rsi'] = 100 - (100 / (1 + rs))
+
+        # MACD
+        ema_12 = df['close'].ewm(span=12).mean()
+        ema_26 = df['close'].ewm(span=26).mean()
+        df['macd'] = ema_12 - ema_26
+        df['macd_signal'] = df['macd'].ewm(span=9).mean()
+        df['macd_hist'] = df['macd'] - df['macd_signal']
+
+        # Drop any remaining NaN values from technical indicators
         df = df.dropna()
-        
-        # Extract relevant features based on crypto type
-        if crypto_name.lower() == 'gala':
-            features = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Quote asset volume',
-                         'RSI', 'MACD', 'MACD_Signal', 'MACD_Hist', 'EMA']].values
-        else:
-            features = df[['Open', 'High', 'Low', 'Close', 'Volume', 'Marketcap',
-                         'RSI', 'MACD', 'MACD_Signal', 'MACD_Hist', 'EMA']].values
-        
+
+        # Extract relevant features
+        features = df[['open', 'high', 'low', 'close', 'volume', 'marketcap',
+                     'rsi', 'macd', 'macd_signal', 'macd_hist']].values
+
         return features
         
-    def create_sequences(self, data, window_size=8):
-        """Create sequences of time series data for Transformer"""
+    def add_technical_indicators(self, df):
+        """Add RSI and MACD indicators to the dataframe."""
+        # Calculate RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
+        
+        # Calculate MACD
+        exp1 = df['close'].ewm(span=12, adjust=False).mean()
+        exp2 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = exp1 - exp2
+        df['macd_signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+        df['macd_hist'] = df['macd'] - df['macd_signal']
+        
+        return df
+
+    def create_sequences(self, data):
+        """Create sequences of data with window size."""
+        # Create DataFrame with all features
+        df = pd.DataFrame(data, columns=['open', 'high', 'low', 'close', 'volume', 'marketcap',
+                                       'rsi', 'macd', 'macd_signal', 'macd_hist'])
+        
+        # Drop NaN values from technical indicators
+        df = df.dropna()
+        
+        # Normalize the data
+        normalized = self.scaler.fit_transform(df.values)
+        
+        # Convert back to DataFrame with same columns
+        df = pd.DataFrame(normalized, columns=['open', 'high', 'low', 'close', 'volume', 'marketcap',
+                                             'rsi', 'macd', 'macd_signal', 'macd_hist'])
+        
+        # Ensure we have enough data for sequences
+        if len(df) < self.window_size:
+            raise ValueError(f"Not enough data points after processing. Need at least {self.window_size} points")
+        
         sequences = []
+        for i in range(len(df) - self.window_size):
+            # Create sequence of window_size length
+            seq = df.iloc[i:i + self.window_size].values
+            sequences.append(seq)
         
-        for i in range(len(data) - window_size):
-            window = data[i:i + window_size]
-            # Normalize the window data
-            window = self.scaler.fit_transform(window)
-            
-            # Convert to float32
-            window = window.astype(np.float32)
-            
-            # Add to list
-            sequences.append(window)
-            
         # Convert to numpy array
-        sequences_array = np.array(sequences)
+        sequences = np.array(sequences)
         
-        return sequences_array
+        # Create labels (1 if price increases after window, 0 if decreases)
+        # Use the close price at the end of the sequence vs the next close price
+        labels = (df['close'].iloc[self.window_size:].values > df['close'].iloc[self.window_size-1:-1].values).astype(int)
         
-    def prepare_dataset(self, crypto_name, window_size=8, test_size=0.2):
+        return sequences, labels
+
+    def prepare_dataset(self, crypto_name='bitcoin', test_size=0.2):
         """Prepare training and testing datasets for a specific cryptocurrency"""
         # Load cryptocurrency data
         data = self.load_crypto_data(crypto_name)
         
-        # Create sequences
-        sequences = self.create_sequences(data, window_size)
-        
-        # Create labels from sequences (1 if price increases after window, 0 if decreases)
-        labels = (data[window_size:, 3] > data[window_size-1:-1, 3]).astype(int)
+        # Create sequences and labels
+        sequences, labels = self.create_sequences(data)
         
         # Split into train and test sets
         split_idx = int(len(sequences) * (1 - test_size))
@@ -113,4 +128,3 @@ class DataProcessor:
             sequences[split_idx:],
             labels[split_idx:]
         )
-        return train_tensors, train_labels, test_tensors, test_labels
