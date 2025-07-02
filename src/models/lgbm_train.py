@@ -22,21 +22,24 @@ def run_lgbm(csv_path, crypto_name):
     clf = lgb.LGBMClassifier(
         n_estimators=200,
         learning_rate=0.03,
-        random_state=42
+        random_state=42,
+        objective='multiclass',
+        num_class=3
     )
     clf.fit(X_train_res, y_train_res)
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred)
-    prec = precision_score(y_test, y_pred)
-    rec = recall_score(y_test, y_pred)
-    cm = confusion_matrix(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average='macro')
+    prec = precision_score(y_test, y_pred, average='macro', zero_division=0)
+    rec = recall_score(y_test, y_pred, average='macro', zero_division=0)
+    cm = confusion_matrix(y_test, y_pred, labels=[-1,0,1])
     print(f'Accuracy: {acc:.4f}')
-    print(f'F1: {f1:.4f}')
-    print(f'Precision: {prec:.4f}')
-    print(f'Recall: {rec:.4f}')
-    print('Confusion Matrix:')
+    print(f'Macro F1: {f1:.4f}')
+    print(f'Macro Precision: {prec:.4f}')
+    print(f'Macro Recall: {rec:.4f}')
+    print('Confusion Matrix (rows: true, cols: pred):')
     print(cm)
+    print('Class distribution in test:', dict(pd.Series(y_test).value_counts()))
 
 if __name__ == "__main__":
     run_lgbm('../../data/processed/btcusdt_enriched.csv', 'bitcoin')

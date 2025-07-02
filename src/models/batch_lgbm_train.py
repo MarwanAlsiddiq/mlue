@@ -23,17 +23,24 @@ for fname in os.listdir(proc_dir):
     ros = RandomOverSampler(random_state=42)
     X_train_res, y_train_res = ros.fit_resample(X_train, y_train)
     print(f'After oversampling: {dict(pd.Series(y_train_res).value_counts())}')
-    clf = lgb.LGBMClassifier(n_estimators=200, learning_rate=0.03, random_state=42)
+    clf = lgb.LGBMClassifier(
+        n_estimators=200,
+        learning_rate=0.03,
+        random_state=42,
+        objective='multiclass',
+        num_class=3
+    )
     clf.fit(X_train_res, y_train_res)
     y_pred = clf.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
-    f1 = f1_score(y_test, y_pred, zero_division=0)
-    prec = precision_score(y_test, y_pred, zero_division=0)
-    rec = recall_score(y_test, y_pred, zero_division=0)
-    cm = confusion_matrix(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, average='macro', zero_division=0)
+    prec = precision_score(y_test, y_pred, average='macro', zero_division=0)
+    rec = recall_score(y_test, y_pred, average='macro', zero_division=0)
+    cm = confusion_matrix(y_test, y_pred, labels=[-1,0,1])
     print(f'Accuracy: {acc:.4f}')
-    print(f'F1: {f1:.4f}')
-    print(f'Precision: {prec:.4f}')
-    print(f'Recall: {rec:.4f}')
-    print('Confusion Matrix:')
+    print(f'Macro F1: {f1:.4f}')
+    print(f'Macro Precision: {prec:.4f}')
+    print(f'Macro Recall: {rec:.4f}')
+    print('Confusion Matrix (rows: true, cols: pred):')
     print(cm)
+    print('Class distribution in test:', dict(pd.Series(y_test).value_counts()))

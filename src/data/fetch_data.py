@@ -96,50 +96,51 @@ class BinanceDataFetcher:
         df.to_csv(filename, index=True)
         print(f"Data saved to {filename}")
 
-def fetch_and_save_crypto_data(symbol, interval='1m', limit=1000, 
-                              start_time=None, end_time=None, 
-                              data_dir='data/raw'):
-    """Fetch and save cryptocurrency data.
-    
-    Args:
-        symbol (str): Trading pair symbol (e.g., 'BTCUSDT')
-        interval (str): Time interval (e.g., '1m', '5m', '1h')
-        limit (int): Number of records to fetch
-        start_time (str): Start time in format '2025-03-19 00:00:00'
-        end_time (str): End time in format '2025-03-19 00:00:00'
-        data_dir (str): Directory to save the data
-    """
-    # Create data directory if it doesn't exist
+def fetch_and_save_crypto_data(symbol, interval='15m', start_time=None, end_time=None, data_dir='data/raw'):
+    """Fetch and save all available crypto data for a symbol/interval between start_time and end_time."""
     os.makedirs(data_dir, exist_ok=True)
-    
-    # Initialize fetcher
-    fetcher = BinanceDataFetcher(symbol, interval, limit)
-    
-    # Fetch data
-    df = fetcher.fetch_data(start_time, end_time)
-    
-    # Save to CSV
-    filename = os.path.join(data_dir, f"{symbol.lower()}_data.csv")
-    fetcher.save_to_csv(df, filename)
-    
-    return df
+    fetcher = BinanceDataFetcher(symbol, interval, 1000)
+    all_dfs = []
+    # Convert to timestamps
+    start_ts = int(pd.Timestamp(start_time).timestamp() * 1000)
+    end_ts = int(pd.Timestamp(end_time).timestamp() * 1000)
+    curr_start = start_ts
+    while curr_start < end_ts:
+        df = fetcher.fetch_data(pd.to_datetime(curr_start, unit='ms'), pd.to_datetime(end_ts, unit='ms'))
+        if df.empty:
+            break
+        all_dfs.append(df)
+        last_ts = int(df.index[-1].timestamp() * 1000)
+        if last_ts == curr_start:
+            break
+        curr_start = last_ts + 1
+        time.sleep(1)  # Respect API rate limits
+    if all_dfs:
+        full_df = pd.concat(all_dfs)
+        full_df = full_df[~full_df.index.duplicated(keep='first')]
+        filename = os.path.join(data_dir, f"{symbol.lower()}_{interval}_full.csv")
+        fetcher.save_to_csv(full_df, filename)
+        return full_df
+    else:
+        print("No data fetched.")
+        return pd.DataFrame()
 
 if __name__ == "__main__":
-    # Example usage
-    # Fetch last 1000 minutes of BTCUSDT data
-    df = fetch_and_save_crypto_data(
+    # Fetch last 6 months of BTCUSDT and GALAUSDT 15m data
+    import datetime
+    end = datetime.datetime.now()
+    start = end - datetime.timedelta(days=180)
+    fetch_and_save_crypto_data(
         symbol='BTCUSDT',
-        interval='1m',
-        limit=1000,
-        start_time='2025-03-19 00:00:00',
-        end_time='2025-03-19 23:59:59'
+        interval='15m',
+        start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
+        end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
+        data_dir='data/raw'
     )
-    
-    # Fetch last 1000 minutes of GALAUSDT data
-    df = fetch_and_save_crypto_data(
+    fetch_and_save_crypto_data(
         symbol='GALAUSDT',
-        interval='1m',
-        limit=1000,
-        start_time='2025-03-19 00:00:00',
-        end_time='2025-03-19 23:59:59'
+        interval='15m',
+        start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
+        end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
+        data_dir='data/raw'
     )

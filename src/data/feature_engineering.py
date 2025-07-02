@@ -43,23 +43,38 @@ def enrich_features(df):
     # Rolling volatility
     df['volatility_5'] = df['close'].rolling(5).std()
     df['volatility_10'] = df['close'].rolling(10).std()
+    # Rolling max/min for trade simulation
+    df['future_max_8'] = df['close'].shift(-1).rolling(window=8).max().shift(1-8)
+    df['future_min_8'] = df['close'].shift(-1).rolling(window=8).min().shift(1-8)
+    df['future_max_16'] = df['close'].shift(-1).rolling(window=16).max().shift(1-16)
+    df['future_min_16'] = df['close'].shift(-1).rolling(window=16).min().shift(1-16)
     # Time features
     df['hour'] = pd.to_datetime(df['timestamp']).dt.hour
     df['dayofweek'] = pd.to_datetime(df['timestamp']).dt.dayofweek
     df = df.fillna(0)
     return df
 
-def create_labels(df, window_size=16, threshold=0.005):
-    # Label: 1 if next close > last close in window by at least threshold (default 0.5%)
-    future_close = df['close'].shift(-window_size)
-    last_close = df['close']
-    labels = ((future_close - last_close) / last_close > threshold).astype(int)
-    return labels
+def create_labels(df, window_size=1, threshold=0.002):
+    """
+    Binary label for trading:
+    1: if next close >= threshold above current close
+    0: otherwise
+    """
+    arr = df['close'].values
+    labels = np.zeros(len(df), dtype=int)
+    for i in range(len(df) - 1):
+        curr = arr[i]
+        next_close = arr[i+1]
+        if (next_close - curr) / curr >= threshold:
+            labels[i] = 1
+        else:
+            labels[i] = 0
+    return pd.Series(labels, index=df.index)
 
-def process_crypto(symbol, input_csv, output_csv, window_size=16):
+def process_crypto(symbol, input_csv, output_csv, window_size=16, threshold=0.002):
     df = pd.read_csv(input_csv)
     df = enrich_features(df)
-    df['label'] = create_labels(df, window_size)
+    df['label'] = create_labels(df, window_size, threshold)
     # Drop last window_size rows (no label)
     df = df.iloc[:-window_size]
     df.to_csv(output_csv, index=False)
