@@ -37,6 +37,57 @@ pip install -r requirements.txt
 - Multi-cryptocurrency support (Bitcoin and Gala)
 - Improved scalability and performance compared to previous CNN-based approach
 
+---
+
+## Project Journey: Steps, Challenges, and Solutions
+
+### 1. Initial Goal and Model
+- Objective: Achieve >80% accuracy in predicting significant upward price moves for cryptocurrencies.
+- Started with a Transformer-based sequence model using minute-level crypto data (BTC, GALA).
+- Initial results: Accuracy stuck near 50%, precision/recall/F1 very low, model predicted almost all negatives.
+
+### 2. Diagnosing Issues
+- **Label Noise:** Binary labels (next close > last close) were very noisy and nearly random at minute-level granularity.
+- **Class Imbalance:** Significant upward moves were rare, leading to severe imbalance and misleading accuracy.
+- **Data Quality:** No data leakage, but label distribution was highly skewed for some coins.
+
+### 3. Solutions and Improvements
+- **Feature Engineering:**
+  - Added technical indicators: EMA, SMA, Bollinger Bands, ATR, RSI, MACD, OBV, lagged returns, rolling volatility, time features.
+  - Used the `ta` library for robust indicator calculation.
+- **Label Redefinition:**
+  - Switched to a 'significant move' label: 1 if next close > last close by 0.5% or more, else 0.
+- **Class Imbalance Handling:**
+  - Used RandomOverSampler to balance classes in the training set for all models.
+- **Aggregation to Higher Timeframes:**
+  - Aggregated data to 15m, 30m, 1h, and 4h intervals to reduce noise and increase the predictability of significant moves.
+  - Automated aggregation and feature engineering for all coins and all timeframes.
+- **Modeling:**
+  - Used LightGBM for tabular modeling with oversampling.
+  - Evaluated with accuracy, F1, precision, recall, and confusion matrix for every coin/timeframe.
+
+### 4. Key Challenges and How We Overcame Them
+- **Label Noise and Randomness:**
+  - Initial binary labels were too noisy; switching to threshold-based labels improved learnability.
+- **Class Imbalance:**
+  - Oversampling helped, but rare positives still limited recall.
+- **Data Sparsity at High Timeframes:**
+  - 1h/4h aggregations resulted in very few samples; focused on 15m/30m/1h for more reliable modeling.
+- **Model Predictive Power:**
+  - Even after improvements, models often predicted all negatives due to label rarity and data limits.
+  - High accuracy was often due to class imbalance, not real predictive skill (low F1/recall).
+
+### 5. Current Limitations and Next Steps
+- **Significant-move prediction remains very challenging** due to label rarity and data limitations.
+- **No coin/timeframe achieved both high accuracy and meaningful F1/recall**—further work is needed on label definition, data volume, or alternative modeling approaches (e.g., regression, multi-class, or higher-level signals).
+- **Next steps:**
+  - Consider lowering the threshold for significant moves to increase positive samples.
+  - Try alternative targets (multi-step, regime prediction, regression).
+  - Expand data sources (order book, sentiment, etc.) if available.
+  - Focus on timeframes/coins with more data for deep learning.
+
+---
+
 ## Project Development Timeline
 
 ### Phase 1: Initial Setup
