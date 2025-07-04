@@ -126,21 +126,28 @@ def fetch_and_save_crypto_data(symbol, interval='15m', start_time=None, end_time
         return pd.DataFrame()
 
 if __name__ == "__main__":
-    # Fetch last 6 months of BTCUSDT and GALAUSDT 15m data
     import datetime
+    import time
+    # Define intervals and max historical days (approximate, Binance limits)
+    intervals = {
+        '1m': 90,    # 3 months
+        '5m': 365,   # 1 year
+        '15m': 365,  # 1 year
+        '30m': 730,  # 2 years
+        '1h': 1095,  # 3 years
+        '4h': 1825   # 5 years
+    }
+    symbols = ['BTCUSDT', 'GALAUSDT']
     end = datetime.datetime.now()
-    start = end - datetime.timedelta(days=180)
-    fetch_and_save_crypto_data(
-        symbol='BTCUSDT',
-        interval='15m',
-        start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
-        end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
-        data_dir='data/raw'
-    )
-    fetch_and_save_crypto_data(
-        symbol='GALAUSDT',
-        interval='15m',
-        start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
-        end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
-        data_dir='data/raw'
-    )
+    for interval, days in intervals.items():
+        start = end - datetime.timedelta(days=days)
+        for symbol in symbols:
+            print(f"Fetching {symbol} {interval} data from {start} to {end}")
+            fetch_and_save_crypto_data(
+                symbol=symbol,
+                interval=interval,
+                start_time=start.strftime('%Y-%m-%d %H:%M:%S'),
+                end_time=end.strftime('%Y-%m-%d %H:%M:%S'),
+                data_dir='data/raw'
+            )
+            time.sleep(2)  # Be gentle to the API

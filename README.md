@@ -39,6 +39,27 @@ pip install -r requirements.txt
 
 ---
 
+## Progress Update: July 2025
+
+### Major Work Done
+- **Fetched extensive multi-timeframe historical data** (1m, 5m, 15m, 30m, 1h, 4h) for BTCUSDT and GALAUSDT from Binance.
+- **Engineered a wide set of technical indicators** using the `ta` library (EMA, SMA, Bollinger Bands, ATR, RSI, MACD, OBV, CCI, Williams %R, Stochastic RSI, ADX, MFI, lagged returns, rolling volatility, time features).
+- **Addressed class imbalance** with RandomOverSampler for LightGBM and dynamic class weighting for deep learning.
+- **Trained and evaluated LightGBM models** (macro F1/accuracy low, models often predicted only majority class).
+- **Trained and evaluated a Transformer model** on enriched 15m BTCUSDT data, with and without class weighting:
+  - Initial accuracy ~61%, but model predicted only one class (no positives).
+  - Lowered label threshold from 0.2% to 0.05% to increase positive samples (now ~40% positive labels).
+  - Retrained Transformer with class weighting (pos_weight=1.48): accuracy ~63%, but still no positive predictions.
+
+### Current Status
+- **Data and features are robust and multi-scale.**
+- **Models (LightGBM, Transformer) still predict only majority class, even after aggressive class weighting and label threshold lowering.**
+- **Next steps:**
+  - Debug model outputs (logits/probabilities) to check if the model is ever close to predicting positives.
+  - Try even lower thresholds, different features, or alternate modeling approaches.
+
+---
+
 ## Project Journey: Steps, Challenges, and Solutions
 
 ### 1. Initial Goal and Model

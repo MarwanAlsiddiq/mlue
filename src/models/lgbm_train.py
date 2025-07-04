@@ -42,5 +42,5 @@ def run_lgbm(csv_path, crypto_name):
     print('Class distribution in test:', dict(pd.Series(y_test).value_counts()))
 
 if __name__ == "__main__":
-    run_lgbm('../../data/processed/btcusdt_enriched.csv', 'bitcoin')
-    run_lgbm('../../data/processed/galausdt_enriched.csv', 'gala')
+    run_lgbm('data/processed/bitcoin_usdt_15m_enriched.csv', 'bitcoin')
+    run_lgbm('data/processed/gala_usdt_15m_enriched.csv', 'gala')

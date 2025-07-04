@@ -36,6 +36,29 @@ def enrich_features(df):
     # OBV
     if len(df) > 2:
         df['obv'] = OnBalanceVolumeIndicator(df['close'], df['volume'], fillna=True).on_balance_volume()
+    # Advanced indicators (require >30 rows for all rolling windows)
+    if len(df) > 30:
+        # CCI (window=20)
+        from ta.trend import CCIIndicator
+        df['cci_20'] = CCIIndicator(df['high'], df['low'], df['close'], window=20, fillna=True).cci()
+        # Williams %R (window=14)
+        from ta.momentum import WilliamsRIndicator
+        df['williamsr_14'] = WilliamsRIndicator(df['high'], df['low'], df['close'], lbp=14, fillna=True).williams_r()
+        # Stochastic RSI (window=14)
+        from ta.momentum import StochRSIIndicator
+        stoch_rsi = StochRSIIndicator(df['close'], window=14, smooth1=3, smooth2=3, fillna=True)
+        df['stochrsi'] = stoch_rsi.stochrsi()
+        df['stochrsi_k'] = stoch_rsi.stochrsi_k()
+        df['stochrsi_d'] = stoch_rsi.stochrsi_d()
+        # ADX (window=14)
+        from ta.trend import ADXIndicator
+        adx = ADXIndicator(df['high'], df['low'], df['close'], window=14, fillna=True)
+        df['adx_14'] = adx.adx()
+        df['adx_pos'] = adx.adx_pos()
+        df['adx_neg'] = adx.adx_neg()
+        # MFI (window=14)
+        from ta.volume import MFIIndicator
+        df['mfi_14'] = MFIIndicator(df['high'], df['low'], df['close'], df['volume'], window=14, fillna=True).money_flow_index()
     # Lagged returns
     df['return_1'] = df['close'].pct_change(1)
     df['return_3'] = df['close'].pct_change(3)
@@ -81,5 +104,5 @@ def process_crypto(symbol, input_csv, output_csv, window_size=16, threshold=0.00
     print(f"Saved enriched {symbol} data to {output_csv}")
 
 if __name__ == "__main__":
-    process_crypto('bitcoin', '../../data/raw/btcusdt_data.csv', '../../data/processed/btcusdt_enriched.csv')
-    process_crypto('gala', '../../data/raw/galausdt_data.csv', '../../data/processed/galausdt_enriched.csv')
+    # Lower threshold for more positives (absolute paths)
+    process_crypto('bitcoin', 'x:/stone/data/raw/btcusdt_15m_full.csv', 'x:/stone/data/processed/bitcoin_usdt_15m_enriched_thresh0005.csv', threshold=0.0005)

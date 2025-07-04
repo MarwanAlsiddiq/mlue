@@ -44,3 +44,14 @@ for fname in os.listdir(proc_dir):
     print('Confusion Matrix (rows: true, cols: pred):')
     print(cm)
     print('Class distribution in test:', dict(pd.Series(y_test).value_counts()))
+
+    # Feature importance analysis
+    feature_names = X.columns
+    importances = clf.feature_importances_
+    fi_df = pd.DataFrame({'feature': feature_names, 'importance': importances}).sort_values('importance', ascending=False)
+    print('Top 10 Feature Importances:')
+    print(fi_df.head(10))
+    # Save feature importances to CSV
+    fi_path = os.path.join(proc_dir, f'{coin_tf}_feature_importance.csv')
+    fi_df.to_csv(fi_path, index=False)
+    print(f'Feature importances saved to {fi_path}')
