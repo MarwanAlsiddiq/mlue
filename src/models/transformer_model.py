@@ -7,17 +7,17 @@ import math
 class TradingConfig(PretrainedConfig):
     def __init__(self):
         self.input_dim = 10  # open, high, low, close, volume, marketcap, rsi, macd, macd_signal, macd_hist
-        self.hidden_dim = 512
-        self.num_layers = 6
-        self.num_heads = 8
-        self.dropout = 0.3
+        self.hidden_dim = 64
+        self.num_layers = 4
+        self.num_heads = 4
+        self.dropout = 0.1
         self.learning_rate = 0.0001
         self.weight_decay = 0.001
         self.class_weights = torch.tensor([1.0, 2.0])  # Give more weight to positive class
         self.batch_size = 32
         self.window_size = 16
-        self.epochs = 100
-        self.patience = 15
+        self.epochs = 15
+        self.patience = 4
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class TradingTransformer(nn.Module):

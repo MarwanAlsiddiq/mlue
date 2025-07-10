@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from torch.utils.data import DataLoader, TensorDataset
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, confusion_matrix
@@ -31,8 +32,13 @@ def load_data(csv_path, window_size=16):
 
 def main():
     # You can change the path here to try different datasets
-    csv_path = 'x:/stone/data/processed/bitcoin_usdt_15m_enriched_thresh0005.csv'
+    csv_path = 'x:/stone/data/processed/bitcoin_usdt_15m_enriched_thresh0005_scaled.csv'
     X, y = load_data(csv_path, window_size=WINDOW_SIZE)
+    # Use a 10,000-sample subset for fast diagnostics
+    max_samples = 10000
+    if len(X) > max_samples:
+        X = X[:max_samples]
+        y = y[:max_samples]
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, shuffle=False)
     train_ds = TensorDataset(torch.tensor(X_train), torch.tensor(y_train))
     test_ds = TensorDataset(torch.tensor(X_test), torch.tensor(y_test))
@@ -54,6 +60,10 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # --- Training Loop ---
+    best_loss = float('inf')
+    best_epoch = 0
+    patience = 3
+    epochs_no_improve = 0
     for epoch in range(EPOCHS):
         model.train()
         losses = []
@@ -66,30 +76,53 @@ def main():
             loss.backward()
             optimizer.step()
             losses.append(loss.item())
-        print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {np.mean(losses):.4f}")
+        avg_loss = np.mean(losses)
+        print(f"Epoch {epoch+1}/{EPOCHS} | Loss: {avg_loss:.4f}")
+        # Early stopping
+        if avg_loss < best_loss:
+            best_loss = avg_loss
+            best_epoch = epoch
+            epochs_no_improve = 0
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                print(f"Early stopping at epoch {epoch+1}")
+                break
+
+    print(f"Best epoch: {best_epoch+1} | Best loss: {best_loss:.4f}")
 
     # --- Evaluation ---
     model.eval()
     all_preds = []
     all_labels = []
+    all_logits = []
+    all_probs = []
     with torch.no_grad():
         for xb, yb in test_loader:
             xb = xb.to(config.device)
             logits = model(xb).float()
-            preds = (torch.sigmoid(logits) > 0.5).cpu().numpy().astype(int)
+            probs = torch.sigmoid(logits).cpu().numpy()
+            preds = (probs > 0.5).astype(int)
             all_preds.extend(preds)
             all_labels.extend(yb.numpy())
+            all_logits.extend(logits.cpu().numpy())
+            all_probs.extend(probs)
     acc = accuracy_score(all_labels, all_preds)
     f1 = f1_score(all_labels, all_preds, average='macro')
     prec = precision_score(all_labels, all_preds, average='macro', zero_division=0)
     rec = recall_score(all_labels, all_preds, average='macro', zero_division=0)
     cm = confusion_matrix(all_labels, all_preds)
-    print(f'Accuracy: {acc:.4f}')
-    print(f'Macro F1: {f1:.4f}')
-    print(f'Macro Precision: {prec:.4f}')
-    print(f'Macro Recall: {rec:.4f}')
+    print(f'Final Test Accuracy: {acc:.4f}')
+    print(f'Final Test Macro F1: {f1:.4f}')
+    print(f'Final Test Macro Precision: {prec:.4f}')
+    print(f'Final Test Macro Recall: {rec:.4f}')
     print('Confusion Matrix:')
     print(cm)
+    # Debug: Print unique values and first 20 logits/probabilities
+    print('Unique logits:', np.unique(all_logits))
+    print('Unique probabilities:', np.unique(all_probs))
+    print('First 20 logits:', all_logits[:20])
+    print('First 20 probabilities:', all_probs[:20])
 
 if __name__ == '__main__':
     main()
