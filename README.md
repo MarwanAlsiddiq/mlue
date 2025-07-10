@@ -45,11 +45,20 @@ pip install -r requirements.txt
 - **Fetched extensive multi-timeframe historical data** (1m, 5m, 15m, 30m, 1h, 4h) for BTCUSDT and GALAUSDT from Binance.
 - **Engineered a wide set of technical indicators** using the `ta` library (EMA, SMA, Bollinger Bands, ATR, RSI, MACD, OBV, CCI, Williams %R, Stochastic RSI, ADX, MFI, lagged returns, rolling volatility, time features).
 - **Addressed class imbalance** with RandomOverSampler for LightGBM and dynamic class weighting for deep learning.
-- **Trained and evaluated LightGBM models** (macro F1/accuracy low, models often predicted only majority class).
-- **Trained and evaluated a Transformer model** on enriched 15m BTCUSDT data, with and without class weighting:
-  - Initial accuracy ~61%, but model predicted only one class (no positives).
-  - Lowered label threshold from 0.2% to 0.05% to increase positive samples (now ~40% positive labels).
-  - Retrained Transformer with class weighting (pos_weight=1.48): accuracy ~63%, but still no positive predictions.
+- **Feature scaling** added for all model inputs (StandardScaler, see `feature_scaling.py`).
+- **Implemented robust walk-forward validation** (see `walk_forward_validation.py`):
+  - Transformer is now evaluated using realistic, time-aware splits.
+  - Macro F1 and recall are stable across folds (0.47–0.54), both classes are predicted in all splits.
+- **Backtesting pipeline** (`backtest_strategy.py`):
+  - Model-driven strategy outperformed buy-and-hold (+15.8% vs. -29.1%) on test period.
+  - All scripts, predictions, and results are reproducible and committed.
+- **New scripts:**
+  - `logistic_regression_baseline.py` for baseline check.
+  - `feature_scaling.py` for robust scaling.
+  - `walk_forward_validation.py` for time-based validation and saving predictions.
+  - `backtest_strategy.py` for equity curve and strategy evaluation.
+  - `save_walk_forward_preds.py` for saving concatenated predictions.
+- **Transformer model now predicts both classes** and demonstrates real predictive value in backtest.
 
 ### Current Status
 - **Data and features are robust and multi-scale.**
