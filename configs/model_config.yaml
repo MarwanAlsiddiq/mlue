@@ -1,0 +1,91 @@
+# Enhanced Transformer Model Configuration
+
+# Model Architecture
+model:
+  input_dim: 10  # Number of input features
+  hidden_dim: 256  # Hidden dimension (reduced for GPU efficiency)
+  num_layers: 4  # Number of transformer layers
+  num_heads: 8  # Number of attention heads
+  dropout: 0.3  # Dropout rate
+  window_size: 16  # Sequence length
+
+# Training Parameters
+training:
+  learning_rate: 0.0001
+  weight_decay: 0.00001
+  batch_size: 64
+  epochs: 50
+  patience: 10  # Early stopping patience
+  device: "cuda"  # or "cpu"
+
+# Task Configuration
+task:
+  type: "regression"  # Options: "regression", "3class", "binary"
+  threshold: 0.005  # Threshold for classification (0.5%)
+  
+# Loss Weights (for 3-class classification)
+class_weights: [1.0, 2.0, 1.0]  # down, neutral, up
+
+# Data Configuration
+data:
+  train_symbols: ["bitcoin", "gala"]
+  test_symbols: ["gala"]  # Can be different from train
+  feature_columns:
+    - "open"
+    - "high" 
+    - "low"
+    - "close"
+    - "volume"
+    - "quote_volume"
+    - "ema_10"
+    - "ema_20"
+    - "rsi_14"
+    - "macd"
+    - "atr_14"
+    - "volatility_5"
+    - "hour"
+    - "dayofweek"
+
+# Evaluation Configuration
+evaluation:
+  metrics:
+    regression: ["mse", "mae", "rmse", "correlation", "directional_accuracy"]
+    classification: ["accuracy", "precision", "recall", "f1"]
+  
+  backtest_strategies:
+    conservative:
+      min_signal_threshold: 0.005
+      max_volatility_threshold: 0.02
+      position_scaling: true
+    aggressive:
+      min_signal_threshold: 0.001
+      max_volatility_threshold: 0.05
+      position_scaling: true
+    balanced:
+      min_signal_threshold: 0.002
+      max_volatility_threshold: 0.03
+      position_scaling: true
+
+# Risk Management
+risk_management:
+  max_drawdown: 0.2  # 20% maximum drawdown
+  stop_loss: 0.02  # 2% stop loss
+  take_profit: 0.04  # 4% take profit
+  transaction_cost: 0.001  # 0.1% per trade
+  slippage: 0.0005  # 0.05% slippage
+  cooldown_period: 5  # Minimum periods between trades
+  long_only: false  # Allow short positions
+
+# Position Sizing
+position_sizing:
+  base_position_size: 0.1  # 10% of portfolio
+  max_position_size: 0.5   # 50% maximum
+  scaling_enabled: true
+
+# Output Configuration
+output:
+  model_save_dir: "models/enhanced_transformer"
+  results_save_dir: "results"
+  plot_format: "png"
+  save_predictions: true
+  save_metrics: true
