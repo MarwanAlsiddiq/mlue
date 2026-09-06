@@ -1,134 +1,62 @@
-# Enhanced ML Crypto Trading System
+# Mlue — cryptocurrency time-series ML research
 
-A machine learning-based cryptocurrency trading system that uses Transformer architectures with **regression-based targets** and **risk-adjusted performance optimization**. This project demonstrates proper ML engineering practices for financial time series prediction.
+**Status: research prototype · active development paused because of model-training costs.**
 
-## Key Features
+Mlue explores predicting cryptocurrency returns and price direction from market time series, then evaluating those predictions through a simulated trading strategy. The repository contains feature engineering, Transformer models, baseline experiments and backtesting code.
 
-- **Regression & 3-Class Classification**: Moved beyond binary classification to predict actual returns or directional movements
-- **Sequence Pooling**: Uses mean pooling instead of last-token-only for better temporal representation
-- **Signal-Gated Trading**: Trades only when signals exceed thresholds with volatility filters
-- **Risk Management**: Built-in position sizing, stop-loss, drawdown limits, and transaction costs
-- **Kaggle Integration**: GPU-optimized training notebooks for efficient resource usage
-- **Evaluation Focus**: Emphasizes Sharpe ratio and risk-adjusted returns over accuracy
+## Why I paused
 
-## Why Not Accuracy?
+I paused development because of the cost of training and iterating on the model. Continuing the experiments would mean funding additional compute for training, comparing configurations and validating results. I decided to preserve the prototype at this stage instead of committing to that additional spending.
 
-In financial markets, **high accuracy ≠ profitability**. This project focuses on:
-- Expected returns and risk-adjusted performance
-- Realistic trading costs and slippage
-- Signal strength and volatility filtering
-- Portfolio-level metrics (Sharpe ratio, drawdown)
+This is a checkpoint in the research, not a completed or validated trading product. The pause does not establish that the approach works or fails; that would require further evaluation. I have kept the code and historical artifacts available, and documented what would need to be checked before resuming.
 
-## Project Structure
+## What I worked on
 
-```
-├── configs/             # Model and training configurations
-├── data/                # Raw and processed cryptocurrency data
-├── models/              # Enhanced Transformer models and training scripts
-├── src/                 # Source code
-│   ├── data/           # Feature engineering and data processing
-│   ├── models/         # Model implementations and training
-│   └── trading/        # Enhanced backtesting and strategy
-├── kaggle_training_notebook.py  # Kaggle GPU training script
-└── README.md
-```
+| Area | Implementation available for inspection |
+| --- | --- |
+| Market-data preparation | Fetching, timeframe aggregation and technical indicators in [src/data](src/data) |
+| Prediction targets | Future log returns, three-way direction labels and a legacy binary mode in [feature_engineering.py](src/data/feature_engineering.py) |
+| Sequence models | Transformer encoder, positional encoding, mean pooling and task-specific output heads in [transformer_model.py](src/models/transformer_model.py) |
+| Training experiments | Training loops, early stopping and checkpoint saving in [train_enhanced_transformer.py](src/models/train_enhanced_transformer.py) |
+| Baseline comparisons | [Logistic regression](src/models/logistic_regression_baseline.py), LightGBM and walk-forward experiment scripts in [src/models](src/models) |
+| Evaluation | Prediction metrics and a simulated backtester with signal filters, position sizing and configurable transaction costs in [enhanced_backtest.py](src/models/enhanced_backtest.py) |
+| Compute experiments | [Kaggle notebook script](notebooks/kaggle_training_notebook.py) and local/GPU configuration presets in [configs](configs) |
 
-## Setup
+These are implemented components, not a claim that every path works together end to end. The prototype mixes several experiments; [the engineering checkpoint](docs/project-status.md) records the integration and validation gaps.
 
-1. Create a virtual environment:
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-```
+## What the evidence supports
 
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+- Source code demonstrates the proposed data → model → prediction → simulated strategy workflow.
+- Two historical checkpoint files are present: `models/plutus_best.pt` and `models/enhanced_plutus/best_model.pt`.
+- Processed arrays and a scaler are present under `data/plutus_processed/`.
+- Those artifacts lack a verified experiment lineage linking a particular data split, configuration, checkpoint and independent evaluation report. Their presence is not a performance result.
 
-## 🚀 Quick Start
+**No validated out-of-sample performance, profitability or live-trading result is claimed here.** The historical test files are empty; this repository currently has no functional test coverage. No new model was trained for this documentation checkpoint.
 
-### Local Development
-```bash
-# Setup environment
-python -m venv .venv
-source .venv/bin/activate  # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+## Review the project without training
 
-# Process data for regression
-python src/data/feature_engineering.py
+Start with the implementation links above and [project status](docs/project-status.md). No GPU, API account or paid service is needed to read the code.
 
-# Train enhanced model
-python src/models/train_enhanced_transformer.py
-
-# Evaluate with risk-adjusted metrics
-python src/models/evaluate_model.py
+```text
+configs/       Experimental model and environment presets
+src/data/      Data preparation, features and labels
+src/models/    Models, training, baselines and evaluation
+src/trading/   Additional trading prototype code
+notebooks/     Kaggle-oriented notebook script
+models/        Historical checkpoint files
+data/         Data folders and historical processed artifacts
+outputs/       Output conventions; not a verified results report
+tests/         Empty historical placeholders
 ```
 
-### Kaggle GPU Training
-1. Upload your project to Kaggle as a dataset
-2. Copy `kaggle_training_notebook.py` into a new notebook
-3. Enable GPU accelerator
-4. Run all cells
+The old quick-start commands have been removed because they implied a reproducible training path that has not been established. Dependencies, paths, feature dimensions and sequence construction need reconciliation first. The Kaggle file contains notebook shell commands and is not an ordinary executable Python script. See [resumption conditions](docs/project-status.md#conditions-for-resuming) before launching training.
 
-## 📊 Model Architecture
+## What I would do next
 
-### Enhanced Transformer
-- **Input**: Multi-feature time series (price, volume, technical indicators)
-- **Architecture**: 4-layer Transformer with sequence pooling
-- **Output**: Regression (returns) or 3-class classification (down/neutral/up)
-- **Training**: MSE/Huber loss for regression, CrossEntropy for classification
+First repair and test the data/model interfaces without a large training run. Then establish a small chronological baseline and profile a bounded pilot before allocating a training budget. Larger experiments should follow only when the pipeline is valid and the compute cost is understood.
 
-### Key Improvements
-- **Sequence Pooling**: `x.mean(dim=1)` instead of last token only
-- **Reduced Depth**: 4 layers for GPU efficiency
-- **Flexible Targets**: Regression or 3-class classification
-- **Risk-Aware**: Trading strategy with position sizing and stop-loss
+The next milestone is a reproducible, budgeted experiment—not simply a larger model.
 
-## 📈 Evaluation Metrics
+## License status
 
-Instead of accuracy, we focus on:
-- **Sharpe Ratio**: Risk-adjusted returns
-- **Max Drawdown**: Worst peak-to-trough decline
-- **Win Rate**: Percentage of profitable trades
-- **Directional Accuracy**: Correct sign predictions (for regression)
-
-## ⚙️ Configuration
-
-All configurations are in `configs/`:
-- `model_config.yaml`: Model architecture and task settings
-- `training_config.yaml`: Environment-specific training parameters
-
-## 🔧 Usage Examples
-
-### Training Different Modes
-```python
-# Regression mode
-config.task_type = 'regression'
-trainer.train(data_path, mode='regression')
-
-# 3-class mode
-config.task_type = '3class'
-trainer.train(data_path, mode='3class')
-```
-
-### Backtesting Strategies
-```python
-# Conservative strategy
-config = TradingConfig(min_signal_threshold=0.005, max_volatility_threshold=0.02)
-
-# Aggressive strategy
-config = TradingConfig(min_signal_threshold=0.001, max_volatility_threshold=0.05)
-```
-
-## 🎯 Project Philosophy
-
-This project demonstrates:
-1. **Proper ML Engineering**: Clean code, configs, reproducibility
-2. **Financial ML Best Practices**: Risk management, realistic evaluation
-3. **Resource Awareness**: Kaggle integration for GPU training
-4. **Portfolio Readiness**: Professional documentation and structure
-
-## 📝 License
-
-MIT License - see LICENSE file
+The repository's [LICENSE](LICENSE) file is currently empty. The previous README described it as MIT, but that text was not present in the license file. Licensing needs to be clarified; this documentation update does not introduce a new license grant.
